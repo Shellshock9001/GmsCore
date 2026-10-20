@@ -188,7 +188,9 @@ private fun performOdsaRequest(
     val userAgent = req?.userAgent(context) ?: "PRD-TS43 OS-Android/${Build.VERSION.RELEASE}"
     val accept = req?.accept_content_type?.takeIf { it.isNotEmpty() } ?: "application/json"
     val acceptLanguage = Locale.getDefault().toLanguageTag().ifEmpty { "en-US" }
-    httpHistory += "GET $url"
+    // The request URL can contain the IMSI, ICCID, EAP identity, and bearer tokens.
+    // Keep the operation in diagnostics without returning those values to callers.
+    httpHistory += "GET ODSA entitlement"
 
     val request = Request.Builder()
         .url(url)
@@ -199,7 +201,7 @@ private fun performOdsaRequest(
 
     return try {
         val response = okHttpClient.newCall(request).execute()
-        httpHistory += "RESP ${response.code} ${request.url}"
+        httpHistory += "RESP ODSA ${response.code}"
         if (response.isSuccessful) {
             response.body?.string()
                 ?: throw Ts43ApiException(
@@ -260,7 +262,7 @@ private fun buildOdsaRequestPayload(
         .header("User-Agent", userAgent)
         .header("Accept-Language", acceptLanguage)
         .build()
-    httpHistory += "GET $initialUrl"
+    httpHistory += "GET EAP entitlement"
 
     for (round in 1..3) {
         val response = try {
@@ -276,7 +278,7 @@ private fun buildOdsaRequestPayload(
         }
 
         val body = response.body?.string() ?: return null
-        httpHistory += "RESP ${response.code} ${currentRequest.url}"
+        httpHistory += "RESP EAP round $round ${response.code}"
         if (!response.isSuccessful) {
             Log.w(TAG, "EAP round $round failed with code ${response.code}")
             throw Ts43ApiException(
@@ -317,7 +319,7 @@ private fun buildOdsaRequestPayload(
                 )
             )
             .build()
-        httpHistory += "POST $postUrl"
+        httpHistory += "POST EAP entitlement"
     }
 
     return null
