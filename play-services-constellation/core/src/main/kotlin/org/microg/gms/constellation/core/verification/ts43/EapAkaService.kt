@@ -7,8 +7,6 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 private const val TAG = "EapAkaService"
 
@@ -36,7 +34,10 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
     @RequiresApi(Build.VERSION_CODES.N)
     fun performSimAkaAuth(eapRelayBase64: String, identity: String): String? {
         val eapPacket = Base64.decode(eapRelayBase64, Base64.DEFAULT)
-        if (eapPacket.size < 12) return null
+        if (eapPacket.size < 8) return null
+        val packetLength = ((eapPacket[2].toInt() and 0xFF) shl 8) or
+            (eapPacket[3].toInt() and 0xFF)
+        if (packetLength != eapPacket.size) return null
 
         val code = eapPacket[0].toInt()
         val eapId = eapPacket[1]
@@ -51,34 +52,36 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
         // Parse attributes (starting at offset 8)
         var rand: ByteArray? = null
         var autn: ByteArray? = null
+        var macValueOffset = -1
 
         var offset = 8
-        while (offset + 2 <= eapPacket.size) {
+        while (offset < eapPacket.size) {
+            if (offset + 2 > eapPacket.size) return null
             val attrType = eapPacket[offset].toInt() and 0xFF
             val attrLen = (eapPacket[offset + 1].toInt() and 0xFF) * 4
-            if (offset + attrLen > eapPacket.size || attrLen < 4) break
+            if (attrLen < 4 || offset + attrLen > eapPacket.size) return null
 
             when (attrType) {
                 AT_RAND -> {
-                    if (attrLen >= 20) {
-                        rand = ByteArray(16)
-                        System.arraycopy(eapPacket, offset + 4, rand, 0, 16)
-                    }
+                    if (attrLen != 20 || rand != null) return null
+                    rand = eapPacket.copyOfRange(offset + 4, offset + 20)
                 }
 
                 AT_AUTN -> {
-                    if (attrLen >= 20) {
-                        autn = ByteArray(16)
-                        System.arraycopy(eapPacket, offset + 4, autn, 0, 16)
-                    }
+                    if (attrLen != 20 || autn != null) return null
+                    autn = eapPacket.copyOfRange(offset + 4, offset + 20)
+                }
+
+                AT_MAC -> {
+                    if (attrLen != 20 || macValueOffset >= 0) return null
+                    macValueOffset = offset + 4
                 }
             }
             offset += attrLen
-            if (rand != null && autn != null) break
         }
 
-        if (rand == null || autn == null) {
-            Log.e(TAG, "Missing RAND or AUTN in EAP-AKA challenge")
+        if (rand == null || autn == null || macValueOffset < 0) {
+            Log.e(TAG, "Missing RAND, AUTN, or MAC in EAP-AKA challenge")
             return null
         }
 
@@ -106,6 +109,13 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
 
                 val kAut = keys["K_aut"] ?: run {
                     Log.e(TAG, "Failed to derive K_aut")
+                    return null
+                }
+
+                // RFC 4187, sections 9.3 and 10.15: verify the received
+                // AT_MAC after USIM authentication and before replying.
+                if (!EapAkaMac.verifyChallenge(kAut, eapPacket, macValueOffset)) {
+                    Log.w(TAG, "EAP-AKA server MAC verification failed")
                     return null
                 }
 
@@ -164,7 +174,7 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
         buffer.put(ByteArray(16))
 
         val packet = buffer.array()
-        val mac = hmacSha1(kAut, packet) ?: return null
+        val mac = EapAkaMac.hmacSha1(kAut, packet) ?: return null
 
         System.arraycopy(mac, 0, packet, macValueOffset, 16)
         return packet
@@ -191,11 +201,6 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
         }.array()
     }
 
-    private fun hmacSha1(key: ByteArray, data: ByteArray): ByteArray? = try {
-        Mac.getInstance("HmacSHA1").apply { init(SecretKeySpec(key, "HmacSHA1")) }.doFinal(data)
-    } catch (_: Exception) {
-        null
-    }
 }
 
 internal fun buildEapIdentity(mccMnc: String, imsi: String, realm: String? = null): String {
