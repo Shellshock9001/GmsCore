@@ -29,6 +29,7 @@ import org.microg.gms.constellation.core.proto.Ts43ChallengeResponseError
 import org.microg.gms.constellation.core.proto.Ts43ChallengeResponseStatus
 import org.microg.gms.constellation.core.verification.ts43.EapAkaService
 import org.microg.gms.constellation.core.verification.ts43.builder
+import org.microg.gms.constellation.core.verification.ts43.subscriberIdIfPermitted
 import org.microg.gms.constellation.core.verification.ts43.userAgent
 import org.xml.sax.InputSource
 import java.io.IOException
@@ -243,7 +244,9 @@ private fun buildOdsaRequestPayload(
     if (req.authentication_token.isNotEmpty() || req.temporary_token.isNotEmpty()) return req
 
     val mccMnc = telephonyManager.simOperator ?: ""
-    val imsi = telephonyManager.subscriberId ?: ""
+    // A regular microG install cannot assume Android 10+ privileged identifier access.
+    // Without a legitimate IMSI, EAP-AKA cannot proceed; never fabricate one.
+    val imsi = telephonyManager.subscriberIdIfPermitted().orEmpty()
     if (mccMnc.length < 5 || imsi.isEmpty()) return null
 
     val eapId = eapAkaService.buildEapId(mccMnc, imsi, eapAkaRealm)
