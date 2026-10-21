@@ -76,6 +76,11 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
                     if (attrLen != 20 || macValueOffset >= 0) return null
                     macValueOffset = offset + 4
                 }
+
+                else -> {
+                    // RFC 4187 section 10.1: unknown types below 128 cannot be skipped.
+                    if (attrType < 128) return null
+                }
             }
             offset += attrLen
         }
@@ -103,6 +108,7 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
                 val res = extractTlv(1, iccBytes) ?: return null
                 val ck = extractTlv(1 + res.size + 1, iccBytes) ?: return null
                 val ik = extractTlv(1 + res.size + 1 + ck.size + 1, iccBytes) ?: return null
+                if (!EapAkaMac.hasValidUsimSuccessLengths(res, ck, ik)) return null
 
                 val identityBytes = identity.toByteArray(StandardCharsets.UTF_8)
                 val keys = Fips186Prf.deriveKeys(identityBytes, ik, ck)
@@ -125,6 +131,7 @@ class EapAkaService(private val telephonyManager: TelephonyManager) {
 
             SIM_RES_SYNC_FAIL -> {
                 val auts = extractTlv(1, iccBytes) ?: return null
+                if (!EapAkaMac.hasValidAutsLength(auts)) return null
                 val responsePacket = buildEapAkaSyncFailure(eapId, auts)
                 Base64.encodeToString(responsePacket, Base64.NO_WRAP)
             }

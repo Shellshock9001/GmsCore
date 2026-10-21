@@ -37,4 +37,16 @@ public final class EapAkaMac {
         return calculatedMac != null
                 && MessageDigest.isEqual(receivedMac, Arrays.copyOf(calculatedMac, 16));
     }
+
+    /** RFC 4187 section 10.8: AKA RES is 32–128 bits; CK and IK are 128 bits each. */
+    public static boolean hasValidUsimSuccessLengths(byte[] res, byte[] ck, byte[] ik) {
+        return res != null && res.length >= 4 && res.length <= 16
+                && ck != null && ck.length == 16
+                && ik != null && ik.length == 16;
+    }
+
+    /** RFC 4187 section 10.9: AKA synchronization failures carry exactly 112-bit AUTS. */
+    public static boolean hasValidAutsLength(byte[] auts) {
+        return auts != null && auts.length == 14;
+    }
 }
