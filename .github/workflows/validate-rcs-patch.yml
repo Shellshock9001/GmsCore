@@ -1,7 +1,5 @@
 name: Validate microG RCS patch on Android SDK
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
       source_ref:
@@ -53,7 +51,7 @@ jobs:
         run: |
           apk="$(find play-services-core/build/outputs/apk -name '*.apk' -type f | head -n 1)"
           test -n "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump xmltree "$apk" AndroidManifest.xml > "$RUNNER_TEMP/rcs-manifest.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$apk" > "$RUNNER_TEMP/rcs-manifest.txt"
           grep -F 'org.microg.gms.rcs.RcsService' "$RUNNER_TEMP/rcs-manifest.txt"
           grep -F 'com.google.android.gms.rcs.START' "$RUNNER_TEMP/rcs-manifest.txt"
           echo 'Compiled manifest includes the RCS service 189 implementation and intent'
