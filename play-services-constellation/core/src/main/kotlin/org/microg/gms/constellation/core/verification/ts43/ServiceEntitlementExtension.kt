@@ -98,6 +98,9 @@ class ServiceEntitlementBuilder(
 ) {
     fun buildBaseUrl(entitlementUrl: String): HttpUrl {
         val baseUrl = entitlementUrl.toHttpUrl()
+        // AOSP requires an HTTPS entitlement server. Subscriber identifiers,
+        // EAP identities and cached tokens must never be sent in cleartext.
+        require(baseUrl.isHttps) { "TS.43 entitlement server must use HTTPS" }
 
         // GMS truncates these fields: vendor (4), model (10), sw_version (20)
         val vendor = resolveTerminalValue(req.terminal_vendor, terminalVendor, 4)
