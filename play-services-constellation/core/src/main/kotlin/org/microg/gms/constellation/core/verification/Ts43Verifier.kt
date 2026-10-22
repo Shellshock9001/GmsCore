@@ -125,17 +125,61 @@ fun Ts43Challenge.verify(context: Context, subId: Int): ChallengeResponse {
             httpHistory
         )
 
-        val responseBody = performOdsaRequest(
-            context,
-            telephonyManager,
-            okHttpClient,
-            httpHistory,
-            entitlement_url,
-            op,
-            requestPayload,
-            app_id,
-            requestType
-        )
+        val responseBody = try {
+            performOdsaRequest(
+                context,
+                telephonyManager,
+                okHttpClient,
+                httpHistory,
+                entitlement_url,
+                op,
+                requestPayload,
+                app_id,
+                requestType
+            )
+        } catch (failure: Ts43ApiException) {
+            val originalRequest = service_entitlement_request
+            if (!Ts43RetryPolicy.shouldRefreshToken(
+                    failure.httpStatus,
+                    originalRequest?.authentication_token?.isNotEmpty() == true,
+                    originalRequest?.temporary_token?.isNotEmpty() == true
+                )
+            ) {
+                throw failure
+            }
+
+            // AOSP treats HTTP 511 as an expired cached token. Force a fresh
+            // SIM-backed EAP-AKA flow once; neither token may accompany it.
+            httpHistory += "RETRY ODSA after expired token"
+            val freshRequest = Ts43RetryPolicy.withoutExpiredTokens(
+                originalRequest ?: throw failure
+            )
+            val refreshedPayload = buildOdsaRequestPayload(
+                context,
+                telephonyManager,
+                eapAkaService,
+                okHttpClient,
+                httpHistory,
+                entitlement_url,
+                eap_aka_realm,
+                freshRequest,
+                app_id
+            ) ?: throw failure
+
+            // The retry is intentionally not wrapped in another recovery
+            // handler. A second 511 is a real error, not an infinite loop.
+            performOdsaRequest(
+                context,
+                telephonyManager,
+                okHttpClient,
+                httpHistory,
+                entitlement_url,
+                op,
+                refreshedPayload,
+                app_id,
+                requestType
+            )
+        }
         ChallengeResponse(
             ts43_challenge_response = responseBuilder(responseBody, httpHistory.toList())
         )
