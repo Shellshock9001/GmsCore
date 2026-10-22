@@ -3,6 +3,15 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Source branch to compile and test (submitted or experimental)'
+        required: true
+        type: choice
+        default: rcs-ts43-validation-and-android10-guards
+        options:
+          - rcs-ts43-validation-and-android10-guards
+          - experiment/rcs-svc189-integration
 permissions:
   contents: read
 jobs:
@@ -15,8 +24,10 @@ jobs:
       - name: Check out submitted patch branch
         uses: actions/checkout@v4
         with:
-          ref: rcs-ts43-validation-and-android10-guards
+          ref: ${{ inputs.source_ref || 'rcs-ts43-validation-and-android10-guards' }}
           fetch-depth: 1
+      - name: Record exact source revision
+        run: git log -1 --format='%H %s'
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
