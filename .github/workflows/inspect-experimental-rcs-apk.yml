@@ -1,0 +1,36 @@
+name: Inspect compiled experimental svc189 APK
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect-existing-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download actual successful experimental APK
+        uses: actions/download-artifact@v4
+        with:
+          name: microg-rcs-patched-debug-apk
+          repository: Shellshock9001/GmsCore
+          run-id: 39751632231
+          github-token: ${{ github.token }}
+          path: ./apk
+      - name: Inspect compiled AndroidManifest using official AAPT2
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find apk -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          test -f "$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$apk" > manifest.txt
+          grep -F 'org.microg.gms.rcs.RcsService' manifest.txt
+          grep -F 'com.google.android.gms.rcs.START' manifest.txt
+          echo "RCS service and intent both exist in the COMPILED APK manifest"
+          echo "Manifest excerpts (no subscriber or message data):"
+          grep -n -B 9 -A 3 -F 'com.google.android.gms.rcs.START' manifest.txt | head -45
+          echo "Exact RCS intent occurrences:"
+          grep -F -c 'com.google.android.gms.rcs.START' manifest.txt
