@@ -31,12 +31,9 @@ import org.microg.gms.constellation.core.verification.ts43.EapAkaService
 import org.microg.gms.constellation.core.verification.ts43.builder
 import org.microg.gms.constellation.core.verification.ts43.subscriberIdIfPermitted
 import org.microg.gms.constellation.core.verification.ts43.userAgent
-import org.xml.sax.InputSource
 import java.io.IOException
-import java.io.StringReader
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import javax.xml.parsers.DocumentBuilderFactory
 
 private const val TAG = "Ts43Verifier"
 
@@ -383,25 +380,7 @@ private fun extractAuthToken(body: String): String? {
         JSONObject(body).optJSONObject("Token")?.optString("token")
     }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
 
-    return runCatching {
-        val normalized = body
-            .replace("&", "&amp;")
-            .replace("&amp;amp;", "&amp;")
-            .replace("\r\n", "\n")
-        val doc = DocumentBuilderFactory.newInstance()
-            .newDocumentBuilder()
-            .parse(InputSource(StringReader(normalized)))
-        val parms = doc.getElementsByTagName("parm")
-        for (i in 0 until parms.length) {
-            val node = parms.item(i)
-            val attrs = node.attributes ?: continue
-            val name = attrs.getNamedItem("name")?.nodeValue ?: continue
-            if (name == "token") {
-                return@runCatching attrs.getNamedItem("value")?.nodeValue
-            }
-        }
-        null
-    }.getOrNull()?.takeIf { it.isNotEmpty() }
+    return Ts43XmlToken.extract(body)
 }
 
 private fun failureResponse(
