@@ -45,6 +45,18 @@ jobs:
           ./gradlew :play-services-constellation-core:assembleDebug :play-services-constellation-core:testDebugUnitTest --no-daemon --console=plain --stacktrace
       - name: Build microG APK
         run: ./gradlew :play-services-core:assembleVtmDefaultDebug --no-daemon --console=plain --stacktrace
+      - name: Run svc189 integration unit tests
+        if: ${{ inputs.source_ref == 'experiment/rcs-svc189-integration' }}
+        run: ./gradlew :play-services-core:testVtmDefaultDebugUnitTest --no-daemon --console=plain --stacktrace
+      - name: Inspect compiled RCS service 189 manifest
+        if: ${{ inputs.source_ref == 'experiment/rcs-svc189-integration' }}
+        run: |
+          apk="$(find play-services-core/build/outputs/apk -name '*.apk' -type f | head -n 1)"
+          test -n "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump xmltree "$apk" AndroidManifest.xml > "$RUNNER_TEMP/rcs-manifest.txt"
+          grep -F 'org.microg.gms.rcs.RcsService' "$RUNNER_TEMP/rcs-manifest.txt"
+          grep -F 'com.google.android.gms.rcs.START' "$RUNNER_TEMP/rcs-manifest.txt"
+          echo 'Compiled manifest includes the RCS service 189 implementation and intent'
       - name: Upload real APK if build succeeds
         if: success()
         uses: actions/upload-artifact@v4
